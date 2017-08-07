@@ -21,3 +21,7 @@
 * Squirrel.Windows builds the tooling code and the installation code in the same library
   - This makes Update.exe way bigger than it needs to be, and makes the flags for Update.exe bananas.
   - Make code that we actually ship in the box as small as possible
+
+* Squirrel.Windows has two separate APIs
+  - One API is through C#, the other API is via parameters to shell out to Update.exe
+  - That's no way to live
