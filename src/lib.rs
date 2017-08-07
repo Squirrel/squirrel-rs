@@ -4,6 +4,7 @@
 #![cfg_attr(test, deny(warnings))]
 
 extern crate semver;
+extern crate sha2;
 
 pub use release_entry::{ReleaseEntry};
 
