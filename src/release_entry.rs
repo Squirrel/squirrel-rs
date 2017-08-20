@@ -267,7 +267,7 @@ b4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-beta.
 
   #[test]
   fn generate_from_license_file() {
-    let expected = "c6170664187466c22ecb6046c69b7476f6a578db3c1707b5ed0723c290969808 LICENSE 0.0.0 1078 full";
+    let expected = "afb11426e09da40a1ae4f8fa17ddcc6b6a52d14df04c29bc5bcd06eb8730624d LICENSE 0.0.0 1057 full";
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let input = Path::new(&dir).join("LICENSE");
     
