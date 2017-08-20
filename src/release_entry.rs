@@ -244,9 +244,6 @@ impl ReleaseEntry {
 mod tests {
   use std::env;
   use std::path::Path;
-
-  use sha2::Sha256;
-  use sha2::Digest;
   use super::ReleaseEntry;
 
   const ENTRIES_EXAMPLE_1: &'static str = "# SHA256 of the file                                             Name       Version Size  [delta/full] release%
