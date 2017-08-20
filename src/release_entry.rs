@@ -1,6 +1,7 @@
 use hex::*;
 use regex::Regex;
 use semver::Version;
+use std::iter::*;
 use std::error::{Error};
 use url::{Url};
 
@@ -118,17 +119,35 @@ impl ReleaseEntry {
     }
   }
 
-/*
-  fn parse_file(file: &str) -> Vec<ReleaseEntry> {
+  pub fn parse_entries(content: &str) -> Result<Vec<ReleaseEntry>, Box<Error>> {
+    let mut was_error: Option<Box<Error>> = None;
+
+    let r: Vec<ReleaseEntry> = content.split("\n").filter_map(|x| {
+      let r = COMMENT.replace_all(x, "");
+      if r.len() == 0 {
+        return None;
+      }
+
+      match ReleaseEntry::parse(&r) {
+        Err(err) => {
+          was_error = Some(err);
+          return None;
+        },
+        Ok(val) => Some(val)
+      }
+    }).collect();
+
+    return match was_error {
+      Some(err) => Err(err),
+      None => Ok(r)
+    };
   }
- */
 }
 
 #[cfg(test)]
 mod tests {
   use sha2::Sha256;
   use sha2::Digest;
-  use url::{Url};
   use super::ReleaseEntry;
 
   fn print_result(sum: &[u8], name: &str) {
@@ -202,6 +221,18 @@ mod tests {
   fn parse_should_fail_negative_percentages() {
     let input = "e4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject.7z 1.2.3 12345 delta -145%";
     ReleaseEntry::parse(input).unwrap_err();
+  }
+
+  #[test]
+  fn parse_all_entries() {
+    let input = "
+# SHA256 of the file                                             Name       Version Size  [delta/full] release%
+e4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject.7z 1.2.3 12345 full
+a4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-delta.7z 1.2.3 555 delta
+b4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-beta.7z 2.0.0-beta.1 34567 full 5%";
+
+    let result = ReleaseEntry::parse_entries(input).unwrap();
+    assert_eq!(result.len(), 3);
   }
 
   #[test]
