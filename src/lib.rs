@@ -14,6 +14,7 @@ extern crate log;
 extern crate regex;
 extern crate semver;
 extern crate sha2;
+extern crate url;
 
 pub use release_entry::{ReleaseEntry};
 
