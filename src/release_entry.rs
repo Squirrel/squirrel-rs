@@ -254,13 +254,6 @@ e4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject.7z 1.
 a4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-delta.7z 1.2.3 555 delta
 b4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-beta.7z 2.0.0-beta.1 34567 full 5%";
 
-  fn print_result(sum: &[u8], name: &str) {
-    for byte in sum {
-      print!("{:02x}", byte);
-    }
-    println!("\t{}", name);
-  }
-
   //
   // Generate from file
   //
@@ -371,15 +364,5 @@ b4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-beta.
   fn parse_all_entries() {
     let result = ReleaseEntry::parse_entries(ENTRIES_EXAMPLE_1).unwrap();
     assert_eq!(result.len(), 3);
-  }
-
-  #[test]
-  fn stringify_a_sha256() {
-    let mut sha = Sha256::default();
-    sha.input("This is a test".as_bytes());
-
-    let hash = sha.result();
-    print_result(&hash, "SHA256");
-    println!("Wat.");
   }
 }
