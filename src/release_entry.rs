@@ -4,6 +4,7 @@ use semver::Version;
 use std::iter::*;
 use std::error::{Error};
 use url::{Url};
+use url::percent_encoding::{percent_decode};
 
 /* Example lines:
 
@@ -63,14 +64,16 @@ impl ReleaseEntry {
     }
   }
 
-  fn parse_name(filename_or_url: &str) -> Result<&str, Box<Error>> {
+  fn parse_name(filename_or_url: &str) -> Result<String, Box<Error>> {
     if SCHEME.is_match(filename_or_url) {
       try!(Url::parse(filename_or_url));
-      return Ok(filename_or_url)
+      return Ok(filename_or_url.to_owned())
     } else {
-      let u = format!("file://{}", filename_or_url);
-      try!(Url::parse(&u));
-      return Ok(filename_or_url);
+      let u = format!("file:///{}", filename_or_url);
+      let url = try!(Url::parse(&u));
+
+      let decoded = try!(percent_decode(url.path().as_bytes()).decode_utf8());
+      return Ok(decoded.trim_left_matches("/").to_owned());
     }
   }
 
@@ -92,7 +95,7 @@ impl ReleaseEntry {
         let mut ret = ReleaseEntry {
           sha256: [0; 32],
           is_delta: try!(ReleaseEntry::parse_delta_full(delta_or_full)),
-          filename_or_url: try!(ReleaseEntry::parse_name(name)).to_owned(),
+          filename_or_url: try!(ReleaseEntry::parse_name(name)),
           version: try!(Version::parse(version)),
           length: try!(size.parse::<i64>()),
           percentage: 100,
@@ -221,6 +224,14 @@ mod tests {
   fn parse_should_fail_negative_percentages() {
     let input = "e4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject.7z 1.2.3 12345 delta -145%";
     ReleaseEntry::parse(input).unwrap_err();
+  }
+
+  #[test]
+  fn url_encoded_filenames_should_end_up_decoded() {
+    let input = "e4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 my%20project.7z 1.2.3 12345 full";
+    let result = ReleaseEntry::parse(input).unwrap();
+
+    assert_eq!(result.filename_or_url, "my project.7z");
   }
 
   #[test]
