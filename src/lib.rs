@@ -11,6 +11,7 @@ extern crate lazy_static;
 extern crate log;
 */
 
+extern crate hex;
 extern crate regex;
 extern crate semver;
 extern crate sha2;
@@ -18,5 +19,4 @@ extern crate url;
 
 pub use release_entry::{ReleaseEntry};
 
-mod hex;
 mod release_entry;

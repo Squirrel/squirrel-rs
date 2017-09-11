@@ -47,7 +47,7 @@ lazy_static! {
 
 impl ReleaseEntry {
   fn parse_sha256(sha256: &str, to_fill: &mut ReleaseEntry) -> Result<bool, Box<Error>> {
-    let ret = try!(sha256.from_hex());
+    let ret = try!(Vec::from_hex(sha256));
     if ret.len() != 32 {
       return Err(From::from("SHA256 is malformed"));
     }
