@@ -1,10 +1,17 @@
+use std::fs;
+use std::fs::{File};
+use std::io::{BufReader, Read};
+use std::iter::*;
+use std::error::{Error};
+use std::path::Path;
+
 use hex::*;
 use regex::Regex;
 use semver::Version;
-use std::iter::*;
-use std::error::{Error};
+use sha2::Sha256;
+use sha2::Digest;
 use url::{Url};
-use url::percent_encoding::{percent_decode};
+use url::percent_encoding::{percent_decode, utf8_percent_encode, DEFAULT_ENCODE_SET};
 
 /* Example lines:
 
@@ -19,21 +26,103 @@ pub struct ReleaseEntry {
   pub sha256: [u8; 32],
   pub filename_or_url: String,
   pub version: Version,
-  pub length: i64,
+  pub length: u64,
   pub is_delta: bool,
   pub percentage: i32,
 }
 
-impl Default for ReleaseEntry {
-  fn default() -> ReleaseEntry {
-    ReleaseEntry {
-      filename_or_url: "Foobdar".to_owned(),
-      version: Version::parse("1.0.0").unwrap(),
-      is_delta: true,
-      length: 42,
-      sha256: [0; 32],
-      percentage: 100,
+static HEADER: &'static str = "# SHA256 of the file                                             Name       Version Size  [delta/full] release%";
+
+//
+// Create new release entries
+impl ReleaseEntry {
+  pub fn from_file(path: &str) -> Result<ReleaseEntry, Box<Error>> {
+    let mut sha256_sum = Sha256::new();
+    {
+      let file = try!(File::open(path));
+      let mut content: [u8; 65536] = [0; 65536];
+      let mut buf = BufReader::new(file);
+
+      loop {
+        let count = try!(buf.read(&mut content));
+        if count == 0 { break; }
+
+        sha256_sum.input(&content[..count]);
+      }
     }
+
+    let p = Path::new(path);
+    let stat = try!(fs::metadata(path));
+    let file = p.file_name().unwrap();
+
+    let mut ret = ReleaseEntry {
+      sha256: [0; 32],
+      filename_or_url: file.to_str().unwrap().to_owned(),
+      length: stat.len(),
+      version: Version::parse("0.0.0").unwrap(),
+      is_delta: false,
+      percentage: 100,
+    };
+
+    let sha = sha256_sum.result();
+    for i in 0..32 {
+      ret.sha256[i] = sha[i];
+    }
+
+    return Ok(ret);
+  }
+}
+
+//
+// Write release files
+//
+
+impl ReleaseEntry {
+  fn sha256_to_string(&self) -> String {
+    return self.sha256.into_iter().fold(
+      "".to_owned(), 
+      |mut acc, x| { 
+        let byte = format!("{:02x}", x);
+        acc.push_str(&byte); 
+        return acc; 
+      });
+  }
+
+  fn escape_filename(&self) -> String {
+    if SCHEME.is_match(&self.filename_or_url) { 
+      return self.filename_or_url.to_owned();
+    } else {
+      return utf8_percent_encode(&self.filename_or_url, DEFAULT_ENCODE_SET).to_string();
+    }
+  }
+
+  pub fn to_release_entry(&self) -> String {
+    if self.percentage == 100 {
+      return format!("{} {} {} {} {}",
+        self.sha256_to_string(),
+        self.escape_filename(),
+        self.version,
+        self.length,
+        if self.is_delta { "delta" } else { "full" });
+    } else {
+      return format!("{} {} {} {} {} {}%",
+        self.sha256_to_string(),
+        self.escape_filename(),
+        self.version,
+        self.length,
+        if self.is_delta { "delta" } else { "full" },
+        self.percentage);
+    }
+  }
+
+  pub fn to_releases_file(entries: &Vec<ReleaseEntry>) -> String {
+    let ret = entries.into_iter()
+      .fold("".to_owned(), |mut acc, x| {
+        acc.push_str(&format!("{}\n", x.to_release_entry()));
+        return acc;
+      });
+
+    return format!("{}\n{}", HEADER, ret.trim_right_matches("\n"));
   }
 }
 
@@ -44,6 +133,10 @@ lazy_static! {
 lazy_static! {
   static ref COMMENT: Regex = Regex::new(r"#.*$").unwrap();
 }
+
+//
+// Parse release entries
+//
 
 impl ReleaseEntry {
   fn parse_sha256(sha256: &str, to_fill: &mut ReleaseEntry) -> Result<bool, Box<Error>> {
@@ -97,7 +190,7 @@ impl ReleaseEntry {
           is_delta: try!(ReleaseEntry::parse_delta_full(delta_or_full)),
           filename_or_url: try!(ReleaseEntry::parse_name(name)),
           version: try!(Version::parse(version)),
-          length: try!(size.parse::<i64>()),
+          length: try!(size.parse::<u64>()),
           percentage: 100,
         };
 
@@ -111,7 +204,7 @@ impl ReleaseEntry {
           is_delta: try!(ReleaseEntry::parse_delta_full(delta_or_full)),
           filename_or_url: try!(ReleaseEntry::parse_name(name)).to_owned(),
           version: try!(Version::parse(version)),
-          length: try!(size.parse::<i64>()),
+          length: try!(size.parse::<u64>()),
           percentage: try!(ReleaseEntry::parse_percentage(percent))
         };
 
@@ -149,21 +242,51 @@ impl ReleaseEntry {
 
 #[cfg(test)]
 mod tests {
-  use sha2::Sha256;
-  use sha2::Digest;
+  use std::env;
+  use std::path::Path;
   use super::ReleaseEntry;
 
-  fn print_result(sum: &[u8], name: &str) {
-    for byte in sum {
-      print!("{:02x}", byte);
-    }
-    println!("\t{}", name);
+  const ENTRIES_EXAMPLE_1: &'static str = "# SHA256 of the file                                             Name       Version Size  [delta/full] release%
+e4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject.7z 1.2.3 12345 full
+a4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-delta.7z 1.2.3 555 delta
+b4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-beta.7z 2.0.0-beta.1 34567 full 5%";
+
+  //
+  // Generate from file
+  //
+
+  #[test]
+  fn generate_from_license_file() {
+    let expected = "afb11426e09da40a1ae4f8fa17ddcc6b6a52d14df04c29bc5bcd06eb8730624d LICENSE 0.0.0 1057 full";
+    let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let input = Path::new(&dir).join("LICENSE");
+    
+    let result = ReleaseEntry::from_file(input.to_str().unwrap())
+      .unwrap()
+      .to_release_entry();
+
+    assert_eq!(result, expected);
+  }
+
+  //
+  // Parse release entries
+  //
+
+  #[test]
+  fn roundtrip_parse_and_generate() {
+    let entry = "e4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject.7z 1.2.3 12345 full";
+    let input = ReleaseEntry::parse(entry).unwrap();
+
+    let result = input.to_release_entry();
+    assert_eq!(entry, &result);
   }
 
   #[test]
-  fn create_a_release_entry() {
-    let f = ReleaseEntry::default();
-    assert_eq!(f.length, 42);
+  fn roundtrip_parse_and_generate_all() {
+    let entries = ReleaseEntry::parse_entries(ENTRIES_EXAMPLE_1).unwrap();
+    let result = ReleaseEntry::to_releases_file(&entries);
+
+    assert_eq!(ENTRIES_EXAMPLE_1, &result);
   }
 
   #[test]
@@ -236,23 +359,7 @@ mod tests {
 
   #[test]
   fn parse_all_entries() {
-    let input = "
-# SHA256 of the file                                             Name       Version Size  [delta/full] release%
-e4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject.7z 1.2.3 12345 full
-a4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-delta.7z 1.2.3 555 delta
-b4548fba3f902e63e3fff36db7cbbd1837493e21c51f0751e51ee1483ddd0f35 myproject-beta.7z 2.0.0-beta.1 34567 full 5%";
-
-    let result = ReleaseEntry::parse_entries(input).unwrap();
+    let result = ReleaseEntry::parse_entries(ENTRIES_EXAMPLE_1).unwrap();
     assert_eq!(result.len(), 3);
-  }
-
-  #[test]
-  fn stringify_a_sha256() {
-    let mut sha = Sha256::default();
-    sha.input("This is a test".as_bytes());
-
-    let hash = sha.result();
-    print_result(&hash, "SHA256");
-    println!("Wat.");
   }
 }
